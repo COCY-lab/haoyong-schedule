@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#4f46e5" />
+  <meta name="description" content="好用的日程表 — 极简快速记一条，本地保存，AI 帮你打标签，周表排期" />
+
+  <!-- iOS web app -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="好用的日程表" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="format-detection" content="telephone=no" />
+
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="./icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./icon-192.png" />
+
+  <link rel="stylesheet" href="./css/app.css" />
+
+  <title>好用的日程表</title>
+</head>
+<body>
+
+  <!-- ============================================================
+       页面 1：现在
+       ============================================================ -->
+  <section id="page-now" class="page page--active">
+    <header class="page-head">
+      <div class="page-head__row">
+        <div>
+          <div class="eyebrow" id="today-line">今天</div>
+          <h1 class="page-title">现在</h1>
+        </div>
+      </div>
+      <p class="page-sub">不看完整清单，只做这一块里的事。</p>
+    </header>
+
+    <div id="now-slot"></div>
+    <div id="overdue-slot"></div>
+    <div id="ahead-slot"></div>
+  </section>
+
+  <!-- ============================================================
+       页面 2：随手记
+       ============================================================ -->
+  <section id="page-capture" class="page">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <h1 class="app-title">好用的日程表</h1>
+      </div>
+      <form id="quickForm" class="quick-form" autocomplete="off" spellcheck="false">
+        <textarea
+          id="quickInput"
+          class="quick-input"
+          rows="2"
+          placeholder="想做点什么？直接输，回车保存…"
+          enterkeyhint="done"
+        ></textarea>
+        <div class="quick-row">
+          <span id="aiStatus" class="ai-status"></span>
+          <button type="submit" id="btnSave" class="btn-primary">保存</button>
+        </div>
+      </form>
+    </header>
+
+    <nav class="tabs" id="quickTabs">
+      <button class="tab active" data-filter="pending">未完成 <span id="countPending" class="badge">0</span></button>
+      <button class="tab" data-filter="all">全部 <span id="countAll" class="badge">0</span></button>
+      <button class="tab" id="btnToggleTheme" title="切换暗色模式">◐</button>
+    </nav>
+
+    <main id="taskList" class="task-list"></main>
+    <div id="emptyState" class="empty-state hidden">
+      <div class="empty-icon">✍️</div>
+      <div class="empty-text">还没有任务，上方输入框直接开始吧</div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       页面 3：周表
+       ============================================================ -->
+  <section id="page-week" class="page">
+    <header class="page-head">
+      <div class="page-head__row">
+        <div>
+          <div class="eyebrow">周表</div>
+          <h1 class="page-title">这一周</h1>
+        </div>
+      </div>
+      <p class="page-sub">固定块之间留出空档，再把事放进去。</p>
+    </header>
+
+    <div class="day-strip" id="day-strip"></div>
+
+    <div class="week-bar">
+      <div>
+        <div class="week-bar__date" id="week-date">—</div>
+        <div class="week-bar__meta" id="week-meta">—</div>
+      </div>
+      <button class="btn btn--sm" id="reuse-btn">沿用上周</button>
+    </div>
+
+    <div class="timeline" id="timeline"></div>
+
+    <div class="week-templates">
+      <h3 class="section-title">固定块模板</h3>
+      <p class="muted">固定安排不会参与排期。点「+」新增，点块可编辑或删除。</p>
+      <div id="tpl-list" class="tpl-list"></div>
+      <button class="btn btn--sm" id="tpl-add">+ 新增固定块</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       页面 4：设置
+       ============================================================ -->
+  <section id="page-settings" class="page">
+    <header class="page-head">
+      <div class="page-head__row">
+        <div>
+          <div class="eyebrow">设置</div>
+          <h1 class="page-title">设置</h1>
+        </div>
+      </div>
+    </header>
+
+    <div class="settings-body">
+      <!-- —— AI 配置 —— -->
+      <section class="card">
+        <h3>AI 自动打标签 <span class="subtle">（共用）</span></h3>
+        <p class="hint">新增任务后，异步请求大模型返回：领域标签 / 优先级 / 预估耗时 / 一句话建议。无 Key 时退回本地关键词规则，任务内容不会联网。</p>
+        <label>Base URL
+          <input type="url" id="cfgBaseURL" placeholder="例如：https://api.deepseek.com/v1" />
+        </label>
+        <label>API Key
+          <input type="password" id="cfgAPIKey" placeholder="sk-...（只存本地）" autocomplete="off" />
+        </label>
+        <label>模型名
+          <input type="text" id="cfgModel" placeholder="例如：deepseek-chat / gpt-4o-mini" />
+        </label>
+        <div class="row-btns">
+          <button id="btnSaveAI" class="btn-primary btn-small">保存配置</button>
+          <button id="btnTestAI" class="btn-ghost btn-small">测试连通</button>
+        </div>
+        <div id="aiTestResult" class="ai-test-result"></div>
+      </section>
+
+      <!-- —— 用户背景 —— -->
+      <section class="card">
+        <h3>我的背景</h3>
+        <p class="hint">描述身份、正在做的事、长期目标、关注领域。每次 AI 判断时作为 system prompt 注入。</p>
+        <textarea id="cfgUserBg" rows="6" placeholder="例如：独立开发者，正在做一个 PWA…"></textarea>
+        <div class="row-btns">
+          <button id="btnSaveBg" class="btn-primary btn-small">保存背景</button>
+          <button id="btnClearBg" class="btn-danger-ghost btn-small">清空背景</button>
+        </div>
+      </section>
+
+      <!-- —— 修正记录 —— -->
+      <section class="card">
+        <h3>标签修正记录 <span id="shotCount" class="subtle">(0 条)</span></h3>
+        <p class="hint">手动修改 AI 给出的标签后，会存为少量 few-shot 参考（限长限条）。</p>
+        <div class="row-btns">
+          <button id="btnClearShots" class="btn-danger-ghost btn-small">清空修正记录</button>
+        </div>
+      </section>
+
+      <!-- —— 备份 —— -->
+      <section class="card">
+        <h3>数据备份</h3>
+        <p class="hint">所有数据仅在本浏览器本地。可导出 JSON 备份，换设备后再导入。</p>
+        <div class="row-btns">
+          <button id="btnExport" class="btn-primary btn-small">导出 JSON</button>
+          <button id="btnImport" class="btn-ghost btn-small">导入 JSON</button>
+          <input type="file" id="importFile" accept="application/json" hidden />
+        </div>
+      </section>
+
+      <!-- —— 固定块模板（也可在周表页管理，这里给个快捷入口） —— -->
+      <section class="card">
+        <h3>固定块模板</h3>
+        <p class="hint">作息、固定会议、通勤等。可到「周表」页底部编辑。</p>
+        <div class="row-btns">
+          <button class="btn-ghost btn-small" data-goto="week">去周表管理</button>
+        </div>
+      </section>
+
+      <!-- —— 隐私说明 —— -->
+      <section class="card">
+        <h3>隐私说明</h3>
+        <ul class="privacy-list">
+          <li>✅ 所有任务内容、API Key、背景设定都只保存在<strong>当前浏览器本地</strong>，不会上传任何服务器。</li>
+          <li>⚠️ 启用 AI 后，每条新增任务的<strong>文本内容 + 你的背景描述</strong>会<strong>发送到你配置的大模型服务</strong>。请选择你信任的服务商。</li>
+          <li>⚠️ 公网部署请用 HTTPS，避免明文中间人风险。</li>
+          <li>🔒 建议：Key 用完可在设置里清空；或使用服务商的"只读 / 特定模型"密钥。</li>
+        </ul>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       底部 tabbar
+       ============================================================ -->
+  <nav class="tabbar" aria-label="主导航">
+    <button class="tab tab--active" data-page="now">
+      <span class="tab__icon">⏱</span>
+      <span class="tab__label">现在</span>
+    </button>
+    <button class="tab" data-page="capture">
+      <span class="tab__icon">✎</span>
+      <span class="tab__label">随手记</span>
+    </button>
+    <button class="tab" data-page="week">
+      <span class="tab__icon">▦</span>
+      <span class="tab__label">周表</span>
+    </button>
+    <button class="tab" data-page="settings">
+      <span class="tab__icon">⚙</span>
+      <span class="tab__label">设置</span>
+    </button>
+  </nav>
+
+  <!-- ============================================================
+       弹窗：编辑任务
+       ============================================================ -->
+  <div id="editModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-mask" data-close-edit></div>
+    <div class="modal-panel" role="dialog" aria-label="编辑任务">
+      <div class="modal-header">
+        <h3>编辑任务</h3>
+        <button class="icon-btn" data-close-edit aria-label="关闭">✕</button>
+      </div>
+      <textarea id="editText" rows="4"></textarea>
+      <div class="row-btns">
+        <button id="btnEditSave" class="btn-primary btn-small">保存</button>
+        <button class="btn-ghost btn-small" data-close-edit>取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       抽屉：选一件事放进某时段
+       ============================================================ -->
+  <div id="pickDrawer" class="drawer hidden" aria-hidden="true">
+    <div class="drawer-mask" data-close-pick></div>
+    <div class="drawer-panel">
+      <div class="drawer-header">
+        <h2 id="pickTitle">放一件事进来</h2>
+        <button class="icon-btn" data-close-pick aria-label="关闭">✕</button>
+      </div>
+      <div class="drawer-body">
+        <p class="hint" id="pickSub">从未排期的任务里挑一件</p>
+        <div id="pickList" class="pick-list"></div>
+        <div id="pickEmpty" class="muted hidden">没有未排期的任务，先去「随手记」记一条吧。</div>
+        <div class="row-btns">
+          <button class="btn-ghost btn-small" data-close-pick>取消</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       弹窗：新增 / 编辑固定块
+       ============================================================ -->
+  <div id="tplModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-mask" data-close-tpl></div>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="tplTitle">新增固定块</h3>
+        <button class="icon-btn" data-close-tpl aria-label="关闭">✕</button>
+      </div>
+      <label>名称 <input type="text" id="tplLabel" placeholder="例如：深度工作" /></label>
+      <label>类型
+        <select id="tplKind">
+          <option value="fixed">固定（不参与排期）</option>
+          <option value="block">可安排整块</option>
+        </select>
+      </label>
+      <div class="row-2">
+        <label>开始 <input type="time" id="tplStart" value="09:00" /></label>
+        <label>结束 <input type="time" id="tplEnd" value="10:00" /></label>
+      </div>
+      <label>适用星期
+        <div class="days-pick" id="tplDays">
+          <label><input type="checkbox" value="mon" checked />一</label>
+          <label><input type="checkbox" value="tue" checked />二</label>
+          <label><input type="checkbox" value="wed" checked />三</label>
+          <label><input type="checkbox" value="thu" checked />四</label>
+          <label><input type="checkbox" value="fri" checked />五</label>
+          <label><input type="checkbox" value="sat" />六</label>
+          <label><input type="checkbox" value="sun" />日</label>
+        </div>
+      </label>
+      <label>备注（可选）<input type="text" id="tplNote" placeholder="例如：一天里最清醒的时段" /></label>
+      <div class="row-btns">
+        <button id="tplSave" class="btn-primary btn-small">保存</button>
+        <button id="tplDelete" class="btn-danger-ghost btn-small hidden">删除</button>
+        <button class="btn-ghost btn-small" data-close-tpl>取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       抽屉：任务详情（含排期入口）
+       ============================================================ -->
+  <div id="taskDrawer" class="drawer hidden" aria-hidden="true">
+    <div class="drawer-mask" data-close-task></div>
+    <div class="drawer-panel">
+      <div class="drawer-header">
+        <h2>任务</h2>
+        <button class="icon-btn" data-close-task aria-label="关闭">✕</button>
+      </div>
+      <div class="drawer-body" id="taskDrawerBody"></div>
+    </div>
+  </div>
+
+  <!-- ============ Toast ============ -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="./js/storage.js"></script>
+  <script src="./js/ai.js"></script>
+  <script src="./js/schedule.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>
