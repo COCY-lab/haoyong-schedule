@@ -33,6 +33,7 @@
     bindTaskDrawer();   // 任务详情抽屉
     bindEditModal();    // 编辑弹窗
     bindSettings();     // 设置页
+    initInstall();      // 安装到手机入口
 
     // 默认到「现在」
     switchPage('now');
@@ -884,6 +885,220 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 500);
     toastIn('已导出 JSON');
+  }
+
+  // ============================================================
+  // 安装到手机（PWA install）
+  // 能力检测优先：beforeinstallprompt 是否捕获 + display-mode standalone
+  // UA 仅用于 iOS 的文案分支
+  // ============================================================
+
+  let installPrompt = null;          // 捕获到的 beforeinstallprompt 事件
+  let installSupported = false;      // 浏览器是否给过安装事件（事件被用掉后仍记得）
+  let installAccepted = false;       // 本次会话内用户已确认安装
+  let installBannerDismissed = false;
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    installSupported = true;
+    syncInstallUI();
+  });
+
+  window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    installAccepted = true;
+    syncInstallUI();
+    toastIn('已安装到桌面');
+  });
+
+  function initInstall() {
+    const btn = $('#btnInstall');
+    const bannerMain = $('#install-banner-main');
+    const bannerClose = $('#install-banner-close');
+    if (btn) btn.addEventListener('click', startInstall);
+    if (bannerMain) bannerMain.addEventListener('click', startInstall);
+    if (bannerClose) bannerClose.addEventListener('click', () => {
+      installBannerDismissed = true;
+      syncInstallUI();
+    });
+
+    // 弹窗内所有 [data-close-install]（含动态插入的按钮）统一关闭
+    const modal = $('#installModal');
+    if (modal) modal.addEventListener('click', (e) => {
+      if (e.target.closest('[data-close-install]')) closeInstallModal();
+    });
+
+    // display-mode 切换（例如从桌面图标打开）时同步入口
+    if (window.matchMedia) {
+      const mq = window.matchMedia('(display-mode: standalone)');
+      const onChange = () => syncInstallUI();
+      if (mq.addEventListener) mq.addEventListener('change', onChange);
+      else if (mq.addListener) mq.addListener(onChange);
+    }
+
+    syncInstallUI();
+  }
+
+  function isStandaloneMode() {
+    try {
+      if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+    } catch (e) { /* ignore */ }
+    return !!(window.navigator && window.navigator.standalone === true);
+  }
+
+  function isIOSDevice() {
+    const ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/i.test(ua)) return true;
+    // iPadOS 13+ 桌面版 UA：靠触点数识别
+    return navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1;
+  }
+
+  function syncInstallUI() {
+    const installed = isStandaloneMode() || installAccepted;
+    const card = $('#install-card');
+    const banner = $('#install-banner');
+    if (card) card.classList.toggle('hidden', installed);
+    if (banner) banner.classList.toggle('hidden', installed || installBannerDismissed);
+
+    const hint = $('#install-card-hint');
+    if (hint && !installed) {
+      if (installPrompt) hint.textContent = '浏览器已就绪，点下面的按钮即可安装。';
+      else if (isIOSDevice()) hint.textContent = '在 Safari 里点底部分享 → 添加到主屏幕。';
+      else hint.textContent = '装到桌面后像 App 一样全屏打开，断网也能用。数据仍然只存在本机。';
+    }
+  }
+
+  async function startInstall() {
+    if (isStandaloneMode() || installAccepted) { syncInstallUI(); return; }
+
+    // 1) 浏览器已给出安装能力：走原生 prompt
+    if (installPrompt) {
+      const evt = installPrompt;
+      installPrompt = null;
+      try {
+        await evt.prompt();
+        const choice = await evt.userChoice;
+        if (choice && choice.outcome === 'accepted') {
+          installAccepted = true;
+          syncInstallUI();
+        } else {
+          toastIn('已取消安装');
+        }
+      } catch (err) {
+        if (installSupported) showInstallRetry();
+        else showInstallFallback();
+      }
+      return;
+    }
+
+    // 2) iOS：无 beforeinstallprompt，给 Safari 图文步骤
+    if (isIOSDevice()) { showIOSInstallGuide(); return; }
+
+    // 3) 浏览器给过事件但一次安装提示已被用掉：提示刷新重试
+    if (installSupported) { showInstallRetry(); return; }
+
+    // 4) 其余：既无安装事件、也非 iOS
+    showInstallFallback();
+  }
+
+  function showInstallRetry() {
+    $('#installModalTitle').textContent = '安装未完成';
+    $('#installModalBody').innerHTML = `
+      <p class="install-lead">浏览器的一次安装提示已经用掉了。可以刷新页面后重新点「安装到手机」，或从浏览器地址栏 / 菜单里的安装入口再装一次。</p>
+      <div class="row-btns">
+        <button class="btn-primary btn-small" type="button" data-close-install>知道了</button>
+      </div>
+    `;
+    openInstallModal();
+  }
+
+  function showIOSInstallGuide() {
+    $('#installModalTitle').textContent = '安装到手机';
+    $('#installModalBody').innerHTML = `
+      <p class="install-lead">必须用 <strong>Safari</strong> 打开本页才能装到桌面。微信、夸克等 App 的内置浏览器不行。</p>
+      <div class="ios-guide" aria-hidden="true">
+        <div class="ios-guide__step">
+          <div class="ios-guide__art"><span class="ios-share-icon"></span></div>
+          <div class="ios-guide__cap">① 点<strong>分享</strong></div>
+        </div>
+        <div class="ios-guide__arrow">→</div>
+        <div class="ios-guide__step">
+          <div class="ios-guide__art"><span class="ios-add-icon"></span></div>
+          <div class="ios-guide__cap">② 选<strong>添加到主屏幕</strong></div>
+        </div>
+      </div>
+      <ol class="install-steps">
+        <li>确认当前是 Safari（地址栏在顶部）；如果是微信 / QQ / 夸克，请点右上角「…」选「在 Safari 中打开」。</li>
+        <li>点 Safari 底部的「分享」图标 <span class="ios-inline-share" aria-hidden="true"></span>。</li>
+        <li>在菜单里找到并点「添加到主屏幕」，再点右上角「添加」。</li>
+        <li>回到手机桌面，用新出现的图标打开，就是全屏 App。</li>
+      </ol>
+      <div class="row-btns">
+        <button class="btn-primary btn-small" type="button" data-close-install>知道了</button>
+      </div>
+    `;
+    openInstallModal();
+  }
+
+  function showInstallFallback() {
+    const url = location.href.split('#')[0];
+    $('#installModalTitle').textContent = '无法直接安装';
+    $('#installModalBody').innerHTML = `
+      <p class="install-lead">当前浏览器不支持安装，请用 <strong>Chrome / Edge / Safari</strong> 打开。</p>
+      <p class="install-note">微信、QQ、夸克等 App 的内置浏览器通常会拦截安装。复制下面的网址，到系统浏览器粘贴打开即可。</p>
+      <div class="install-url">
+        <input type="text" id="installUrlText" readonly value="${esc(url)}" aria-label="可复制的网址" />
+        <button type="button" id="btnCopyInstallUrl" class="btn-primary btn-small">复制网址</button>
+      </div>
+      <div class="row-btns">
+        <button class="btn-ghost btn-small" type="button" data-close-install>关闭</button>
+      </div>
+    `;
+    const input = $('#installUrlText');
+    input.addEventListener('click', () => input.select());
+    $('#btnCopyInstallUrl').addEventListener('click', () => copyText(url, $('#btnCopyInstallUrl')));
+    openInstallModal();
+  }
+
+  function copyText(text, btn) {
+    const done = () => {
+      if (btn) {
+        btn.textContent = '已复制';
+        setTimeout(() => { btn.textContent = '复制网址'; }, 1600);
+      }
+      toastIn('网址已复制');
+    };
+    const fallback = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        if (ok) done(); else toastIn('请长按网址手动复制');
+      } catch (e) { toastIn('请长按网址手动复制'); }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done).catch(fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  function openInstallModal() {
+    const m = $('#installModal');
+    m.classList.remove('hidden');
+    m.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeInstallModal() {
+    const m = $('#installModal');
+    m.classList.add('hidden');
+    m.setAttribute('aria-hidden', 'true');
   }
 
   // ============================================================

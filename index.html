@@ -39,6 +39,17 @@
       <p class="page-sub">不看完整清单，只做这一块里的事。</p>
     </header>
 
+    <div id="install-banner" class="install-banner hidden">
+      <button id="install-banner-main" class="install-banner__main" type="button">
+        <span class="install-banner__icon" aria-hidden="true">↓</span>
+        <span class="install-banner__text">
+          <b>可以把它装到桌面</b>
+          <span>全屏打开，断网也能用</span>
+        </span>
+      </button>
+      <button id="install-banner-close" class="install-banner__close" type="button" aria-label="关闭提示">✕</button>
+    </div>
+
     <div id="now-slot"></div>
     <div id="overdue-slot"></div>
     <div id="ahead-slot"></div>
@@ -128,6 +139,18 @@
     </header>
 
     <div class="settings-body">
+      <!-- —— 安装到手机 —— -->
+      <section class="card card--install" id="install-card">
+        <div class="install-card__head">
+          <span class="install-card__icon" aria-hidden="true">↓</span>
+          <div class="install-card__text">
+            <h3>安装到手机</h3>
+            <p class="hint" id="install-card-hint">装到桌面后像 App 一样全屏打开，断网也能用。数据仍然只存在本机。</p>
+          </div>
+        </div>
+        <button id="btnInstall" class="btn-primary install-btn" type="button">安装到手机</button>
+      </section>
+
       <!-- —— AI 配置 —— -->
       <section class="card">
         <h3>AI 自动打标签 <span class="subtle">（共用）</span></h3>
@@ -314,6 +337,20 @@
         <button class="icon-btn" data-close-task aria-label="关闭">✕</button>
       </div>
       <div class="drawer-body" id="taskDrawerBody"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       弹窗：安装到手机（iOS 步骤 / 不支持浏览器）
+       ============================================================ -->
+  <div id="installModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-mask" data-close-install></div>
+    <div class="modal-panel install-panel" role="dialog" aria-modal="true" aria-labelledby="installModalTitle">
+      <div class="modal-header">
+        <h3 id="installModalTitle">安装到手机</h3>
+        <button class="icon-btn" type="button" data-close-install aria-label="关闭">✕</button>
+      </div>
+      <div id="installModalBody" class="install-modal-body"></div>
     </div>
   </div>
 

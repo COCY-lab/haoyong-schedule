@@ -705,3 +705,191 @@ html[data-theme="dark"] .toast { background: rgba(230,232,238,.92); color: #181b
 
 /* 现在页空状态提示 */
 .now__clock { font-size: 12px; color: var(--text-faint); margin-top: 14px; }
+
+/* ============================================================
+ * 安装到手机
+ * ============================================================ */
+
+/* 现在页顶部轻提示 */
+.install-banner {
+  display: flex; align-items: stretch;
+  margin: 0 16px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.install-banner__main {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border: none; background: transparent;
+  text-align: left;
+}
+.install-banner__main:active { background: var(--surface-2); }
+.install-banner__icon {
+  flex: none;
+  width: 32px; height: 32px;
+  border-radius: 9px;
+  background: rgba(79,70,229,.12);
+  color: var(--primary);
+  font-size: 17px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.install-banner__text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.install-banner__text b { font-size: 14px; font-weight: 600; color: var(--text); }
+.install-banner__text span { font-size: 12px; color: var(--text-faint); }
+.install-banner__close {
+  flex: none;
+  width: 40px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 16px;
+}
+.install-banner__close:active { background: var(--surface-2); }
+
+/* 设置页顶部安装卡片 */
+.card--install {
+  border-color: rgba(79,70,229,.3);
+  background-color: var(--surface);
+  background-image: linear-gradient(180deg, rgba(79,70,229,.07), rgba(79,70,229,0) 70%);
+}
+.install-card__head { display: flex; align-items: flex-start; gap: 12px; }
+.install-card__icon {
+  flex: none;
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  background: rgba(79,70,229,.13);
+  color: var(--primary);
+  font-size: 22px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.install-card__text { flex: 1; min-width: 0; }
+.install-card__text h3 { margin-bottom: 4px; }
+.install-card__text .hint { margin-bottom: 0; }
+.install-btn {
+  width: 100%;
+  margin-top: 12px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* 安装说明弹窗 */
+.install-panel {
+  max-width: 440px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.install-modal-body { font-size: 14px; color: var(--text-muted); }
+.install-lead { margin: 0 0 10px; color: var(--text); font-size: 14px; line-height: 1.6; }
+.install-note { margin: 0 0 12px; font-size: 13px; line-height: 1.6; }
+.install-steps { margin: 0 0 4px; padding-left: 20px; font-size: 13px; line-height: 1.8; }
+.install-steps li { margin-bottom: 4px; }
+
+/* 纯 CSS 示意：分享图标 → 添加到主屏幕 */
+.ios-guide {
+  display: flex; align-items: center; justify-content: center;
+  gap: 14px;
+  padding: 16px 8px;
+  margin: 4px 0 14px;
+  background: var(--surface-2);
+  border-radius: 12px;
+}
+.ios-guide__step { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.ios-guide__art {
+  width: 62px; height: 62px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  display: flex; align-items: center; justify-content: center;
+}
+.ios-guide__cap { font-size: 12px; text-align: center; color: var(--text-muted); line-height: 1.5; }
+.ios-guide__cap strong { color: var(--text); }
+.ios-guide__arrow { color: var(--text-faint); font-size: 20px; margin-top: -18px; }
+
+.ios-share-icon {
+  position: relative;
+  width: 26px; height: 32px;
+  border: 2px solid var(--primary);
+  border-radius: 7px;
+}
+.ios-share-icon::before {
+  content: '';
+  position: absolute; left: 50%; top: 4px;
+  width: 2px; height: 15px;
+  background: var(--primary);
+  transform: translateX(-50%);
+}
+.ios-share-icon::after {
+  content: '';
+  position: absolute; left: 50%; top: 2px;
+  width: 8px; height: 8px;
+  border-left: 2px solid var(--primary);
+  border-top: 2px solid var(--primary);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.ios-add-icon {
+  position: relative;
+  width: 30px; height: 30px;
+  border: 2px solid var(--primary);
+  border-radius: 8px;
+}
+.ios-add-icon::before,
+.ios-add-icon::after {
+  content: '';
+  position: absolute;
+  background: var(--primary);
+}
+.ios-add-icon::before { left: 6px; right: 6px; top: 50%; height: 2px; transform: translateY(-50%); }
+.ios-add-icon::after { top: 6px; bottom: 6px; left: 50%; width: 2px; transform: translateX(-50%); }
+
+.ios-inline-share {
+  position: relative;
+  display: inline-block;
+  vertical-align: -4px;
+  width: 13px; height: 16px;
+  margin: 0 2px;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+}
+.ios-inline-share::before {
+  content: '';
+  position: absolute; left: 50%; top: 2px;
+  width: 1.5px; height: 8px;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+.ios-inline-share::after {
+  content: '';
+  position: absolute; left: 50%; top: 0;
+  width: 4px; height: 4px;
+  border-left: 1.5px solid currentColor;
+  border-top: 1.5px solid currentColor;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+/* 不支持安装时的可复制网址 */
+.install-url {
+  display: flex; gap: 8px; align-items: stretch;
+  margin-bottom: 12px;
+}
+.install-url input {
+  flex: 1; min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+.install-url .btn-primary { flex: none; }
+@media (max-width: 380px) {
+  .install-url { flex-direction: column; }
+  .install-url .btn-primary { width: 100%; justify-content: center; }
+}
+
