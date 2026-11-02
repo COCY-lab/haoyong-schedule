@@ -24,7 +24,7 @@
       const rb = ruleBased(text);
       rb.status = 'none';
       rb.note = 'AI 未启用';
-      rb.scheduleSuggestion = suggestScheduleByRule(null, rb.priority);
+      rb.scheduleSuggestion = suggestScheduleByRule(text, null, rb.priority);
       return rb;
     }
 
@@ -63,16 +63,16 @@
       if (!clean.tags.length) clean.tags = ruleBased(text).tags;
       if (!clean.priority)    clean.priority = ruleBased(text).priority;
 
-      // 排期建议
+      // 排期建议：双重校验（字段合法 + 真的是未来可行空档），不合格就回落本地规则
       const sched = parsed.scheduleSuggestion || parsed.suggestion_schedule || parsed.schedule;
-      clean.scheduleSuggestion = normalizeScheduleSuggestion(sched, est, clean.priority);
+      clean.scheduleSuggestion = normalizeScheduleSuggestion(sched, est, clean.priority, text);
 
       return { status: 'ok', ...clean };
     } catch (e) {
       const rb = ruleBased(text);
       rb.status = 'error';
       rb.error  = (e && (e.name === 'AbortError' ? '请求超时' : (e.message || String(e)))) || '未知错误';
-      rb.scheduleSuggestion = suggestScheduleByRule(null, rb.priority);
+      rb.scheduleSuggestion = suggestScheduleByRule(text, null, rb.priority);
       return rb;
     }
   }
@@ -82,29 +82,51 @@
     const bg = Storage.getUserBg().trim();
     const shots = Storage.getShots().slice(0, 5); // 前 5 条
 
-    // 注入未来可用空档（来自 schedule.js）
+    // 注入时间上下文（当前时间 + 今天剩余空档 + 明天空档，全部来自 schedule.js）
     let slotsHint = '';
+    let nowHint = '';
     try {
-      const slots = (window.Schedule && window.Schedule.getUpcomingSlots)
-        ? window.Schedule.getUpcomingSlots({ maxDays: 2, maxPerDay: 4, snapMinutes: 30 })
-        : [];
-      const labelMap = { mon: '周一', tue: '周二', wed: '周三', thu: '周四', fri: '周五', sat: '周六', sun: '周日' };
-      if (slots.length) {
-        slotsHint = '\n未来可用空档（按时间排序，只从中选一个开始时间）：' +
-          slots.map((s, i) => `${i+1}. ${labelMap[s.day]} ${s.start}（剩约 ${s.endMinutes} 分钟，块:"${s.label}"）`).join('\n');
+      if (window.Schedule && window.Schedule.getUpcomingSlots) {
+        const nowM = Schedule.nowMinutes();
+        const nowLabel = Schedule.hhmm(nowM);
+        const labelMap = { mon: '周一', tue: '周二', wed: '周三', thu: '周四', fri: '周五', sat: '周六', sun: '周日' };
+
+        // 带 est=0 的完整候选（不过滤时长），让 AI 看到全部可行空档再自己判断
+        const slots = Schedule.getUpcomingSlots({ maxDays: 2, maxPerDay: 6, snapMinutes: 30, fromNow: true, estMinutes: 0 });
+        const todayKeyNow = Schedule.todayKey();
+
+        // 分今天 / 明天
+        const todaySlots = slots.filter(s => s.day === todayKeyNow);
+        const tomorrowSlots = slots.filter(s => s.day !== todayKeyNow);
+
+        const formatList = list => list.map((s, i) =>
+          `  ${i+1}. ${labelMap[s.day]} ${s.start}（剩约 ${s.endMinutes} 分钟，块:"${s.label}"）`
+        ).join('\n');
+
+        nowHint = `\n当前时间：${nowLabel}（${labelMap[todayKeyNow]}）`;
+        if (todaySlots.length) {
+          slotsHint += `\n【今天剩余可行空档】（只能从中选一个开始时间）：\n${formatList(todaySlots)}`;
+        } else {
+          slotsHint += `\n【今天已无可行行空档】（全部被占或已过去）`;
+        }
+        if (tomorrowSlots.length) {
+          slotsHint += `\n【明天可行空档】（今天放不下时再考虑）：\n${formatList(tomorrowSlots)}`;
+        }
       }
-    } catch (e) { slotsHint = ''; }
+    } catch (e) { /* schedule.js 未就绪时静默 */ }
 
     const sysParts = [
       '你是一个简洁的任务标签 + 排期建议助手。',
       '请严格输出一个 JSON 对象（不要 Markdown 代码块、不要额外解释）：',
       '{"tags": ["标签1", "标签2"], "priority": "high|mid|low", "estMinutes": 数字, "suggestion": "一句话行动建议，≤40字", "scheduleSuggestion": {"day": "mon|tue|...", "start": "HH:MM", "minutes": 30|60|90|120, "reason": "一句话理由，≤25字"}}',
-      '约束：',
+      '硬性约束：',
       '  - tags 2~4 个中文短语；priority high(紧急)/mid(一般)/low(有空再做)；estMinutes 拿不准给 30 或 45。',
-      '  - scheduleSuggestion.day 和 start 必须从下面给出的空档中选；minutes 取 30/60/90/120，尽量贴近 estMinutes 且能放进空档剩余时长；reason 要短。',
-      '  - 如果实在没有合适空档，scheduleSuggestion 可以是 null。',
+      '  - scheduleSuggestion.day 和 start 必须从【今天剩余可行空档】或【明天可行空档】的列表中选一个明确的条目，不能自己编。',
+      '  - scheduleSuggestion.minutes 取 30/60/90/120，必须 ≤ 所选空档的剩余分钟数；reason 要短。',
+      '  - 如果列表里没有任何合适空档（比如任务明显不该在这些时间），scheduleSuggestion 可以是 null。',
     ];
 
+    if (nowHint) sysParts.push(nowHint);
     if (bg) sysParts.push('用户背景：' + bg.slice(0, 3000));
     if (shots.length) {
       sysParts.push(
@@ -165,50 +187,85 @@
   function rankOf(p) { return { high:3, mid:2, low:1 }[p] || 2; }
 
   // ---------- 本地规则排期建议 ----------
-  // 给一个优先级/估时，调用 schedule.js 找合适空档，返回 { day, start, minutes, reason, source:'rule' } 或 null。
-  function suggestScheduleByRule(estMinutes, priority) {
+  // 给一条任务的文本 + 估时 + 优先级，找合适的空档。
+  // 逻辑：先从 text 里提取语义时间词（早饭/午饭/晚饭/睡前），有就取离该时间段最近的可行空档；
+  // 没提取到就取"最早能放下的"可行空档。找不到可行空档就返回 null。
+  // 返回 { day, start, minutes, reason, source:'rule' } 或 null。
+  const TIME_WORD_MAP = [
+    { kind: 'morning', kws: ['早饭','早餐','早上','早晨','上午','晨'] },
+    { kind: 'noon',    kws: ['午饭','中饭','午餐','中午','午休'] },
+    { kind: 'evening', kws: ['晚饭','晚餐','晚上','傍晚','晚','夜','宵夜'] },
+    { kind: 'late',    kws: ['睡前','睡觉','上床','夜里','凌晨'] },
+  ];
+  function extractTimeHint(text) {
+    const s = String(text || '').toLowerCase();
+    for (const g of TIME_WORD_MAP) {
+      for (const k of g.kws) { if (s.indexOf(k) >= 0) return g.kind; }
+    }
+    return null;
+  }
+
+  function suggestScheduleByRule(text, estMinutes, priority) {
     if (!window.Schedule) return null;
     const defaultEst = { high: 30, mid: 45, low: 60 }[priority || 'mid'] || 45;
     const mins = Math.max(estMinutes || defaultEst, 30);
-    const slot = Schedule.findSlotForTask(mins);
+
+    const hint = extractTimeHint(text);
+    let slot;
+    if (hint) {
+      slot = Schedule.findSlotBySemanticTime(mins, hint);
+    } else {
+      slot = Schedule.findSlotForTask(mins);
+    }
     if (!slot) return null;
 
     // 30 分钟吸附：把估时 round 到 30/60/90/120，且 ≤ 空档剩余
     const snapped = Math.round(mins / 30) * 30;
     const minutes = Math.min(Math.max(snapped, 30), 120, slot.endMinutes);
-    const reasonByPriority = {
-      high: '任务紧急，尽早开始',
-      mid:  '有空再做，见缝插针',
-      low:  '优先级低，先让给紧急',
-    };
-    const reason = reasonByPriority[priority || 'mid'] || '本地规则建议';
+
+    let reason;
+    if (hint === 'morning') reason = '任务语义偏早，安排到上午';
+    else if (hint === 'noon')    reason = '临近午休，先放午饭附近';
+    else if (hint === 'evening') reason = '吃晚饭相关，排到傍晚/晚上';
+    else if (hint === 'late')    reason = '睡前相关，放到夜晚';
+    else {
+      const reasonByPriority = {
+        high: '任务紧急，尽早开始',
+        mid:  '有空再做，见缝插针',
+        low:  '优先级低，先让给紧急',
+      };
+      reason = reasonByPriority[priority || 'mid'] || '本地规则建议';
+    }
+
     return {
       day: slot.day,
       start: slot.start,
       minutes,
-      reason: reason.slice(0, 25),
+      reason: String(reason).slice(0, 25),
       source: 'rule',
     };
   }
 
   // ---------- AI 排期建议 规范化 ----------
-  // 校验 day 在 WEEK 数组、start 在可用空档里、minutes 30 吸附、reason ≤ 25 字。
-  // 任一校验不过就回落到 suggestScheduleByRule。
-  function normalizeScheduleSuggestion(raw, estMinutes, priority) {
+  // 双重校验：
+  //   1) 字段格式合法（day 在 WEEK、start 是 HH:MM、minutes 30 的倍数）
+  //   2) 必须真的是未来时间 + 能完整放下 est（用 getUpcomingSlots({ fromNow:true, estMinutes }) 查找）
+  // 任一校验不过 → 回落 suggestScheduleByRule。
+  function normalizeScheduleSuggestion(raw, estMinutes, priority, fallbackText) {
     const WEEK = ['mon','tue','wed','thu','fri','sat','sun'];
-    if (!raw || typeof raw !== 'object') {
-      return suggestScheduleByRule(estMinutes, priority);
-    }
+    const nowMin = (window.Schedule && window.Schedule.nowMinutes) ? Schedule.nowMinutes() : new Date().getHours() * 60 + new Date().getMinutes();
+    const BUF = (window.Schedule && window.Schedule.BUFFER) ? Schedule.BUFFER : 15;
+    const fallback = () => suggestScheduleByRule(fallbackText, estMinutes, priority);
+
+    if (!raw || typeof raw !== 'object') return fallback();
 
     // 1) day 合法
-    if (!raw.day || WEEK.indexOf(raw.day) < 0) {
-      return suggestScheduleByRule(estMinutes, priority);
-    }
+    if (!raw.day || WEEK.indexOf(raw.day) < 0) return fallback();
 
     // 2) start 必须是 HH:MM 格式
-    if (!raw.start || !/^([01]?\d|2[0-3]):([0-5]\d)$/.test(raw.start)) {
-      return suggestScheduleByRule(estMinutes, priority);
-    }
+    if (!raw.start || !/^([01]?\d|2[0-3]):([0-5]\d)$/.test(raw.start)) return fallback();
+
+    const startM = parse(raw.start);
 
     // 3) minutes：30 的倍数，30~120
     const minsRaw = Number(raw.minutes);
@@ -221,17 +278,22 @@
       minutes = Math.min(120, Math.max(30, Math.round((estMinutes || 45) / 30) * 30));
     }
 
-    // 4) 校验 start 是否真的在这天某个可安排块里（用 getUpcomingSlots 里找）
-    let found = false;
+    // 4) 二次硬性校验：
+    //    a. 若是今天：startM 必须 >= nowMin + BUFFER（未来且有缓冲）
+    //    b. 该 slot 必须真的存在于 getUpcomingSlots({ fromNow:true, estMinutes }) 里
+    //    c. 空档剩余 endMinutes 必须 >= minutes
+    if (raw.day === (window.Schedule && Schedule.todayKey()) && startM < nowMin + BUF) {
+      return fallback();   // AI 编了今天已过去或马上到的时段
+    }
     try {
-      if (window.Schedule && window.Schedule.getUpcomingSlots) {
-        const slots = window.Schedule.getUpcomingSlots({ maxDays: 2, maxPerDay: 20, fromNow: false, snapMinutes: 30 });
-        found = slots.some(s => s.day === raw.day && s.start === raw.start);
-      }
-    } catch (e) { found = false; }
-
-    if (!found) {
-      return suggestScheduleByRule(estMinutes, priority);
+      const slots = window.Schedule.getUpcomingSlots({
+        maxDays: 2, maxPerDay: 30, snapMinutes: 30, fromNow: true, estMinutes: minutes,
+      });
+      const hit = slots.find(s => s.day === raw.day && s.start === raw.start);
+      if (!hit) return fallback();   // 不在真实的可行空档里
+      if (hit.endMinutes < minutes) return fallback();   // 放不下 est
+    } catch (e) {
+      return fallback();
     }
 
     // 5) reason ≤ 25 字

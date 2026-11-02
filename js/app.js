@@ -390,6 +390,40 @@
     // 设置页里的"去周表管理"
     if (e.target.dataset.goto === 'week') { switchPage('week'); return; }
 
+    // === 任务详情抽屉里的按钮（事件委托统一处理，不用每次 open 重新绑） ===
+    const tdAction = e.target.closest('[data-td-action]');
+    if (tdAction) {
+      const drawer = tdAction.closest('#taskDrawer');
+      const tid = drawer ? drawer.dataset.taskId : null;
+      if (!tid) return;
+      const act = tdAction.dataset.tdAction;
+      if (act === 'slot') {
+        closeTaskDrawer();
+        openPickDrawer({ day: Schedule.todayKey(), start: '09:00', onDone: renderAll });
+      } else if (act === 'reslot') {
+        const task = Storage.getTasks().find(x => x.id === tid);
+        closeTaskDrawer();
+        openPickDrawer({ day: task && task.slot ? task.slot.day : Schedule.todayKey(), start: task && task.slot ? task.slot.start : '09:00', onDone: renderAll });
+      } else if (act === 'unslot') {
+        Schedule.unplaceTask(tid);
+        closeTaskDrawer();
+        renderAll();
+        toastIn('已取消排期');
+      } else if (act === 'edit') {
+        const task = Storage.getTasks().find(x => x.id === tid);
+        closeTaskDrawer();
+        if (task) openEdit(task);
+      } else if (act === 'del') {
+        if (confirm('确定删除这条任务？')) {
+          Storage.removeTask(tid);
+          closeTaskDrawer();
+          renderAll();
+          toastIn('已删除');
+        }
+      }
+      return;
+    }
+
     // 卡片上的排期建议 —— 接受
     const acceptBtn = e.target.closest('[data-sched-accept]');
     if (acceptBtn) {
@@ -859,27 +893,15 @@
       ${slot}
       <div class="row-btns">
         ${t.slot
-          ? `<button class="btn" id="td-reslot">改时间</button><button class="btn btn-danger-ghost" id="td-unslot">取消排期</button>`
-          : `<button class="btn btn--primary" id="td-slot">排进周表</button>`}
-        <button class="btn" id="td-edit">编辑内容</button>
-        <button class="btn btn-danger-ghost" id="td-del">删除</button>
+          ? `<button class="btn" data-td-action="reslot">改时间</button><button class="btn btn-danger-ghost" data-td-action="unslot">取消排期</button>`
+          : `<button class="btn btn--primary" data-td-action="slot">排进周表</button>`}
+        <button class="btn" data-td-action="edit">编辑内容</button>
+        <button class="btn btn-danger-ghost" data-td-action="del">删除</button>
       </div>
     `;
+    $('#taskDrawer').dataset.taskId = t.id;   // 把任务 id 存到抽屉根节点，事件委托时取用
     $('#taskDrawer').classList.remove('hidden');
     $('#taskDrawer').setAttribute('aria-hidden', 'false');
-
-    $('#td-slot').addEventListener('click', () => { closeTaskDrawer(); openPickDrawer({ day: Schedule.todayKey(), start: '09:00', onDone: renderAll }); });
-    $('#td-reslot').addEventListener('click', () => { closeTaskDrawer(); openPickDrawer({ day: t.slot.day, start: t.slot.start, onDone: renderAll }); });
-    $('#td-unslot').addEventListener('click', () => { Schedule.unplaceTask(t.id); closeTaskDrawer(); renderAll(); toastIn('已取消排期'); });
-    $('#td-edit').addEventListener('click', () => { closeTaskDrawer(); openEdit(t); });
-    $('#td-del').addEventListener('click', () => {
-      if (confirm('确定删除这条任务？')) {
-        Storage.removeTask(t.id);
-        closeTaskDrawer();
-        renderAll();
-        toastIn('已删除');
-      }
-    });
   }
   function closeTaskDrawer() {
     $('#taskDrawer').classList.add('hidden');
