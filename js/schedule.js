@@ -214,6 +214,6 @@
     // 沿用上周
     reuseLastWeek,
     // 模板
-    addBlock, updateBlock, removeBlock, resetTemplate,
+    addBlock, updateBlock, removeBlock,
   };
 })(window);

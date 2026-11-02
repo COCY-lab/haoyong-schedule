@@ -6,7 +6,7 @@
  *   3. 网络请求（AI API）不拦截，让浏览器自己处理，离线自然失败由 ai.js 兜底
  * ============================================================ */
 
-const CACHE_NAME = 'ryb-v3-20261103';
+const CACHE_NAME = 'ryb-v4-20261103';
 const PRECACHE_URLS = [
   './',
   './index.html',
