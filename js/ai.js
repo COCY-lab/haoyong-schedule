@@ -266,7 +266,10 @@
     // 2) start 必须是 HH:MM 格式
     if (!raw.start || !/^([01]?\d|2[0-3]):([0-5]\d)$/.test(raw.start)) return fallback();
 
-    const startM = parse(raw.start);
+    // 注意：parse 是 schedule.js IIFE 的私有函数，这里不能裸调（线上报过 parse is not defined）。
+    // start 已过 HH:MM 正则校验，直接就地换算分钟。
+    const _sp = raw.start.split(':');
+    const startM = Number(_sp[0]) * 60 + Number(_sp[1]);
 
     // 3) minutes：30 的倍数，30~120
     const minsRaw = Number(raw.minutes);
