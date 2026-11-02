@@ -216,6 +216,20 @@
   function removeBlock(id) {
     Storage.saveTemplate(Storage.getTemplate().filter(b => b.id !== id));
   }
+  // 一键清空所有固定块（仅作用于模板，不触碰待办任务）
+  function clearAllBlocks() {
+    Storage.saveTemplate([]);
+  }
+  // 当前周键 YYYY-Www（ISO 周，以周一为界）
+  function currentWeekKey() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    const dow = (d.getDay() + 6) % 7;         // 周一=0
+    d.setDate(d.getDate() - dow);             // 本周一
+    const jan1 = new Date(d.getFullYear(), 0, 1);
+    const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+    return d.getFullYear() + '-W' + (week < 10 ? '0' + week : '' + week);
+  }
 
   /**
    * 获取未来可用空档列表（今天剩余 + 明天前几个）。
@@ -350,7 +364,7 @@
     // 沿用上周
     reuseLastWeek,
     // 模板
-    addBlock, updateBlock, removeBlock,
+    addBlock, updateBlock, removeBlock, clearAllBlocks, currentWeekKey,
     // 排期建议辅助
     getUpcomingSlots, findSlotForTask, findSlotBySemanticTime,
   };

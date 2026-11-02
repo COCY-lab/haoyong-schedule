@@ -243,16 +243,21 @@
       snapshot: [],
       // 周表当前选中的天
       weekDay: null,
+      // 新周固定块清理提示：已提示到哪一周（YYYY-Www），null 表示从未提示
+      lastPromptWeek: null,
     };
   }
 
   function getSchedules() {
     const s = getJSON(KEY_SCHEDULES, null) || {};
-    const tpl = Array.isArray(s.template) && s.template.length ? s.template : defaultTemplate();
+    // 关键：空数组也是用户的合法选择（主动删空），不能再回填默认模板。
+    // 只有 KEY 不存在（首次使用，s.template === undefined）时才回落默认。
+    const tpl = Array.isArray(s.template) ? s.template : defaultTemplate();
     return {
       template: tpl,
       snapshot: Array.isArray(s.snapshot) ? s.snapshot : [],
       weekDay: s.weekDay || null,
+      lastPromptWeek: s.lastPromptWeek || null,
     };
   }
   function saveSchedules(s) {

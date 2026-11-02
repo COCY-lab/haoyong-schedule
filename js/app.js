@@ -320,6 +320,42 @@
   // ============================================================
   function bindNowEvents() {
     // 现在页的点击事件（委托）放在 document 上
+
+    // 新一周固定块清理提示条（首次跨周进入现在/周表页时出现，只提示不自动清理）
+    const banner = document.createElement('div');
+    banner.id = 'week-prompt';
+    banner.className = 'week-prompt hidden';
+    banner.innerHTML =
+      '<span class="week-prompt__text">上周固定块还在，是否需要清空？</span>' +
+      '<div class="week-prompt__acts">' +
+        '<button class="btn btn--sm" id="week-prompt-clear" type="button">清空全部固定块</button>' +
+        '<button class="btn btn--sm btn--ghost" id="week-prompt-ignore" type="button">忽略</button>' +
+      '</div>';
+    document.body.appendChild(banner);
+    banner.querySelector('#week-prompt-clear').addEventListener('click', () => {
+      Schedule.clearAllBlocks();
+      Storage.saveSchedules({ lastPromptWeek: Schedule.currentWeekKey() });
+      banner.classList.add('hidden');
+      renderAll();
+      toastIn('已清空全部固定块');
+    });
+    banner.querySelector('#week-prompt-ignore').addEventListener('click', () => {
+      Storage.saveSchedules({ lastPromptWeek: Schedule.currentWeekKey() });
+      banner.classList.add('hidden');
+    });
+  }
+
+  // 新周提示判定：有固定块 + 本周还没提示过 → 显示；否则隐藏
+  function checkWeekPrompt() {
+    const banner = $('#week-prompt');
+    if (!banner) return;
+    const sch = Storage.getSchedules();
+    const cur = Schedule.currentWeekKey();
+    if (sch.template.length && sch.lastPromptWeek !== cur) {
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
   }
 
   document.addEventListener('click', (e) => {
@@ -522,6 +558,7 @@
   });
 
   function renderNow() {
+    checkWeekPrompt();
     const day = Schedule.todayKey();
     const blocks = Schedule.blocksFor(day);
     const mins = Schedule.nowMinutes();
@@ -741,6 +778,14 @@
       }
     });
     $('#tpl-add').addEventListener('click', () => openTplModal());
+    $('#tpl-clear-all').addEventListener('click', () => {
+      if (!Storage.getTemplate().length) { toastIn('已经是空的了'); return; }
+      if (!confirm('确定清空全部固定块？此操作只删固定块，不会删除任何待办任务。')) return;
+      Schedule.clearAllBlocks();
+      Storage.saveSchedules({ lastPromptWeek: Schedule.currentWeekKey() });
+      renderWeek();
+      toastIn('已清空全部固定块');
+    });
     $('#tpl-list').addEventListener('click', e => {
       const item = e.target.closest('.tpl-item');
       if (item) openTplModal(item.dataset.id);
@@ -748,6 +793,7 @@
   }
 
   function renderWeek() {
+    checkWeekPrompt();
     const days = Schedule.weekDates();
     if (!weekSelectedDay) weekSelectedDay = Storage.getSchedules().weekDay || Schedule.todayKey();
     if (!days.some(d => d.key === weekSelectedDay)) weekSelectedDay = Schedule.todayKey();
