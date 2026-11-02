@@ -199,6 +199,64 @@
     Storage.saveTemplate(Storage.getTemplate().filter(b => b.id !== id));
   }
 
+  /**
+   * 获取未来可用空档列表（今天剩余 + 明天前几个）。
+   * 只返回 kind='block' 或 'gap' 的非 fixed 块；30 分钟吸附；
+   * 已排满（同时段已有任务）的开始点自动跳过。
+   * 返回 [{ day, start, endMinutes, reasonHint }]，按时间升序。
+   */
+  function getUpcomingSlots({ maxDays = 2, maxPerDay = 3, fromNow = true, snapMinutes = 30 } = {}) {
+    const days = [todayKey(), tomorrowKey()];
+    const mins0 = nowMinutes();
+    const out = [];
+    const seen = new Set();  // day|start 去重
+
+    for (const day of days) {
+      if (days.indexOf(day) >= maxDays) break;
+      const blocks = blocksFor(day);
+      for (const b of blocks) {
+        if (b.kind === 'fixed') continue;
+        let startM = parse(b.start);
+        const endM = parse(b.end);
+        // 30 分钟吸附起点（下一个吸附点）
+        if (fromNow && day === todayKey() && startM < mins0) {
+          startM = Math.ceil(mins0 / snapMinutes) * snapMinutes;
+        } else {
+          startM = Math.ceil(startM / snapMinutes) * snapMinutes;
+        }
+        if (startM >= endM) continue;
+        for (let s = startM; s < endM; s += snapMinutes) {
+          const key = day + '|' + hhmm(s);
+          if (seen.has(key)) continue;
+          // 同时段已有任务则跳过
+          const occupied = Storage.getTasks().some(t =>
+            t.slot && t.slot.day === day && t.slot.start === hhmm(s)
+          );
+          if (occupied) continue;
+          seen.add(key);
+          out.push({ day, start: hhmm(s), endMinutes: endM - s, label: b.label });
+          if (out.length >= maxDays * maxPerDay) break;
+        }
+        if (out.length >= maxDays * maxPerDay) break;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 给一个任务找合适的空档（本地规则）。
+   * estMinutes 能放进的第一个空档；找不到就返回最宽松的那个。
+   */
+  function findSlotForTask(estMinutes) {
+    const slots = getUpcomingSlots({ maxDays: 2, maxPerDay: 10, snapMinutes: 30 });
+    if (!slots.length) return null;
+    const target = Math.max(estMinutes || 30, 30);
+    for (const s of slots) {
+      if (s.endMinutes >= target) return s;
+    }
+    return slots[0];
+  }
+
   // ---------- 导出到 window ----------
   global.Schedule = {
     // 时间
@@ -215,5 +273,7 @@
     reuseLastWeek,
     // 模板
     addBlock, updateBlock, removeBlock,
+    // 排期建议辅助
+    getUpcomingSlots, findSlotForTask,
   };
 })(window);

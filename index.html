@@ -153,8 +153,8 @@
 
       <!-- —— AI 配置 —— -->
       <section class="card">
-        <h3>AI 自动打标签 <span class="subtle">（共用）</span></h3>
-        <p class="hint">新增任务后，异步请求大模型返回：领域标签 / 优先级 / 预估耗时 / 一句话建议。无 Key 时退回本地关键词规则，任务内容不会联网。</p>
+        <h3>AI 标签 + 排期建议 <span class="subtle">（共用）</span></h3>
+        <p class="hint">新增任务后，异步请求大模型返回：领域标签 / 优先级 / 预估耗时 / 一句话建议 / 排期建议（基于你这周真实空档）。无 Key 时退回本地关键词规则 + 规则排期，任务内容不会联网。</p>
         <label>Base URL
           <input type="url" id="cfgBaseURL" placeholder="例如：https://api.deepseek.com/v1" />
         </label>

@@ -179,6 +179,54 @@
   }
   function sortTopFirst(a) { return [...a].sort((x, y) => y.createdAt - x.createdAt); }
 
+  // 按 AI 优先级排序未排期候选（high→mid→low，再按最近排期建议的起始时间，最后按创建时间新→旧）
+  function sortUnplacedCandidates(list) {
+    const priRank = { high: 3, mid: 2, low: 1 };
+    return [...list].sort((a, b) => {
+      const aiA = a.ai || {}, aiB = b.ai || {};
+      const pa = priRank[aiA.priority] || 2;
+      const pb = priRank[aiB.priority] || 2;
+      if (pa !== pb) return pb - pa;                              // 高优先级在前
+      // 有排期建议的优先（按建议 day+start 排序）
+      const sa = aiA.scheduleSuggestion, sb = aiB.scheduleSuggestion;
+      if (sa && sb) {
+        if (sa.day !== sb.day) return sa.day < sb.day ? -1 : 1;
+        if (sa.start !== sb.start) return sa.start < sb.start ? -1 : 1;
+      } else if (sa) return -1;
+      else if (sb) return 1;
+      return b.createdAt - a.createdAt;                           // 创建时间新→旧
+    });
+  }
+
+  // 渲染"现在页空档候选"的 HTML 片段
+  function nowCandidatesHTML(candidates, slotDay, slotStart, gapMinutes) {
+    if (!candidates.length) return '';
+    const items = candidates.slice(0, 3).map(t => {
+      const ai = t.ai || {};
+      const est = ai.estMinutes;
+      const fits = est && est <= gapMinutes;
+      const pc = ai.priority === 'high' ? '⚠ 高' : ai.priority === 'low' ? '⌁ 低' : '';
+      const btnDay = slotDay ? slotDay : Schedule.tomorrowKey();
+      const btnStart = slotStart || Schedule.tomorrowFirstStart();
+      const extra = fits ? '' : '（超出空档）';
+      return `<div class="candidate-row" data-id="${t.id}">
+        <div class="candidate-row__body">
+          <div class="candidate-row__text">${esc(t.text)}</div>
+          <div class="candidate-row__meta">${est ? '约 ' + est + ' 分钟' : '未估时'}${pc ? ' · ' + pc : ''}${extra}</div>
+        </div>
+        <button class="candidate-row__btn" type="button" data-cand-slot data-cand-slot-day="${btnDay}" data-cand-slot-start="${btnStart}">放进这一段</button>
+      </div>`;
+    }).join('');
+    const more = candidates.length > 3
+      ? `<div class="muted" style="margin-top:6px">还有 ${candidates.length - 3} 件在待办里</div>`
+      : '';
+    return `<div class="now-gap-candidates">
+      <div class="now-gap-candidates__title">待排候选</div>
+      <div class="now-gap-candidates__list">${items}</div>
+      ${more}
+    </div>`;
+  }
+
   function renderTaskCard(t) {
     const el = document.createElement('article');
     el.className = 'task-card' + (t.done ? ' done' : '');
@@ -199,6 +247,28 @@
       ? `<span class="tag">▦ ${Schedule.WEEK_LABEL[t.slot.day] || t.slot.day} ${t.slot.start}</span>`
       : '';
 
+    // 排期建议条（视觉上优先于标签；未排期、未完成、未忽略、未接受才显示）
+    const sugg = ai.scheduleSuggestion;
+    const showSugg = sugg && !t.slot && !t.done && !ai.scheduleIgnored && !ai.scheduleAccepted;
+    let suggHTML = '';
+    if (showSugg) {
+      const labelMap = { mon:'周一', tue:'周二', wed:'周三', thu:'周四', fri:'周五', sat:'周六', sun:'周日' };
+      const prefixDay = (sugg.day === Schedule.todayKey()) ? '今天' : labelMap[sugg.day] || sugg.day;
+      const sourceTag = sugg.source === 'ai' ? 'AI 建议' : '本地规则';
+      suggHTML = `<div class="card-suggestion" data-id="${t.id}">
+        <div class="card-suggestion__head">
+          <span class="card-suggestion__dot"></span>
+          <span class="card-suggestion__time">排到 ${prefixDay} ${sugg.start}</span>
+          <span class="card-suggestion__src">· ${sourceTag}</span>
+        </div>
+        ${sugg.reason ? `<div class="card-suggestion__reason">${esc(sugg.reason)}</div>` : ''}
+        <div class="card-suggestion__acts">
+          <button class="card-suggestion__accept" data-sched-accept type="button">接受这个时间</button>
+          <button class="card-suggestion__ignore" data-sched-ignore type="button">忽略</button>
+        </div>
+      </div>`;
+    }
+
     el.innerHTML = `
       <div class="task-main">
         <label class="check-wrap">
@@ -211,6 +281,7 @@
             <span>🕒 ${fmtTime(t.createdAt)}</span>
             ${t.done ? `<span>✓ 已完成</span>` : ''}
           </div>
+          ${suggHTML}
           ${hasAI || slotInfo ? `<div class="tag-line">${priorityTag}${tagHTML}${slotInfo}${extraTags.join('')}</div>` : ''}
           ${ai.suggestion ? `<div class="suggestion">💡 ${esc(ai.suggestion)}</div>` : ''}
           ${ai.error ? `<div class="suggestion" style="border-left-color:var(--danger);color:var(--danger)">⚠ ${esc(ai.error)}</div>` : ''}
@@ -318,6 +389,54 @@
     }
     // 设置页里的"去周表管理"
     if (e.target.dataset.goto === 'week') { switchPage('week'); return; }
+
+    // 卡片上的排期建议 —— 接受
+    const acceptBtn = e.target.closest('[data-sched-accept]');
+    if (acceptBtn) {
+      const card = acceptBtn.closest('[data-id]');
+      if (!card) return;
+      const task = Storage.getTasks().find(t => t.id === card.dataset.id);
+      const sugg = task && task.ai && task.ai.scheduleSuggestion;
+      if (!sugg) return;
+      Schedule.placeTask(task.id, sugg.day, sugg.start);
+      Storage.updateTask(task.id, { ai: Object.assign({}, task.ai, { scheduleAccepted: true, scheduleIgnored: false }) });
+      renderAll();
+      toastIn('已接受建议，排进 ' + Schedule.WEEK_LABEL[sugg.day] + ' ' + sugg.start);
+      return;
+    }
+    // 卡片上的排期建议 —— 忽略
+    const ignoreBtn = e.target.closest('[data-sched-ignore]');
+    if (ignoreBtn) {
+      const card = ignoreBtn.closest('[data-id]');
+      if (!card) return;
+      const task = Storage.getTasks().find(t => t.id === card.dataset.id);
+      if (!task || !task.ai) return;
+      Storage.updateTask(task.id, { ai: Object.assign({}, task.ai, { scheduleIgnored: true }) });
+      if (currentPage === 'capture') renderCapture();
+      return;
+    }
+    // 现在页候选 —— 放进这一段（当前空档）
+    const slotBtn = e.target.closest('[data-cand-slot]');
+    if (slotBtn) {
+      const card = slotBtn.closest('[data-id]');
+      if (!card) return;
+      const day = slotBtn.dataset.candSlotDay;
+      const start = slotBtn.dataset.candSlotStart;
+      Schedule.placeTask(card.dataset.id, day, start);
+      toastIn('已排到 ' + Schedule.WEEK_LABEL[day] + ' ' + start);
+      renderNow();
+      return;
+    }
+    // 现在页候选 —— 排到明天
+    const tomBtn = e.target.closest('[data-cand-tomorrow]');
+    if (tomBtn) {
+      const card = tomBtn.closest('[data-id]');
+      if (!card) return;
+      Schedule.placeTask(card.dataset.id, Schedule.tomorrowKey(), Schedule.tomorrowFirstStart());
+      toastIn('已排到明天 ' + Schedule.tomorrowFirstStart());
+      renderNow();
+      return;
+    }
   });
 
   function renderNow() {
@@ -348,15 +467,25 @@
     }
 
     let nowCard = '';
+    // 预先算候选：未排期、未完成的任务，按优先级 + 排期建议排
+    const allUnplaced = sortUnplacedCandidates(Schedule.unplacedTasks());
+
     if (!cur && !gap) {
       const last = blocks[blocks.length - 1];
       if (last && mins >= Schedule.parse(last.end)) {
         const undone = Storage.getTasks().filter(t => !t.done && t.slot && t.slot.day === day);
+        const gapMinutes = 1440 - mins;  // 今天剩下到 24:00
+        const candidates = allUnplaced.filter(t => !t.slot);  // 已经是未排期
+        const candsHTML = nowCandidatesHTML(candidates, Schedule.tomorrowKey(), Schedule.tomorrowFirstStart(), gapMinutes);
+        // 没有候选时，给一个"明天第一个空档"的入口提示
+        const tomEntry = !candidates.length ? '' : `<div class="now-tomorrow-entry">这些候选已经没有今天空档了，建议排到明天第一个空档 ${Schedule.tomorrowFirstStart()}（按钮会自动排明天）</div>`;
         nowCard = `<section class="now now--gap">
           <div class="now__eyebrow"><span class="now__dot"></span>此刻 · ${Schedule.hhmm(mins)} · 已收工</div>
           <h2 class="now__title">今天走完了</h2>
           <p class="now__range">最后一块 ${last.start} — ${last.end} 已结束。${undone.length ? `今天还有 ${undone.length} 件没做完。` : '今天的事情都收尾了。'}</p>
           ${undone.length ? '<div class="now__actions"><button type="button" class="btn btn--primary" id="defer-all">把没做完的放到明天</button></div>' : ''}
+          ${candsHTML}
+          ${tomEntry}
         </section>`;
       } else {
         const first = blocks[0];
@@ -374,6 +503,9 @@
         Schedule.parse(t.slot.start) >= Schedule.parse(cur.start) && Schedule.parse(t.slot.start) < Schedule.parse(cur.end)
       );
       const isFixed = cur.kind === 'fixed';
+      const gapMinutesHere = Schedule.parse(cur.end) - mins;
+      const candidatesHere = allUnplaced.filter(t => !t.slot);
+      const candsHTMLHere = !isFixed ? nowCandidatesHTML(candidatesHere, day, cur.start, gapMinutesHere) : '';
       nowCard = `<section class="now">
         <div class="now__head">
           <div class="grow">
@@ -391,9 +523,11 @@
           ? `<div class="now__empty">这是固定安排，不用往里塞事。${nxt ? '下一块 ' + nxt.start + ' ' + esc(nxt.label) : ''}</div>`
           : list.length
             ? `<div class="now__list">${list.slice(0, 3).map(nowTaskHTML).join('')}</div>
-               ${list.length > 3 ? `<div class="muted" style="margin-top:8px">这块还有 ${list.length - 3} 件，排在后面</div>` : ''}`
-            : `<div class="now__empty">这一块暂时没有安排的事。要不要放一件进来？
-                 <div class="now__actions"><button type="button" class="btn btn--sm" data-add-start="${cur.start}">放一件进来</button></div></div>`}
+               ${list.length > 3 ? `<div class="muted" style="margin-top:8px">这块还有 ${list.length - 3} 件，排在后面</div>` : ''}
+               ${candsHTMLHere}`
+            : `<div class="now__empty">这一块暂时没有安排的事。</div>
+               ${candsHTMLHere}
+               <div class="now__actions"><button type="button" class="btn btn--sm" data-add-start="${cur.start}">从待办里挑一件</button></div>`}
         ${nxt ? `<div class="now__next">→ 下一块 <b>${nxt.start} ${esc(nxt.label)}</b></div>` : ''}
       </section>`;
     } else {
@@ -403,14 +537,17 @@
         !t.done && t.slot && t.slot.day === day &&
         Schedule.parse(t.slot.start) >= Schedule.parse(gap.start) && Schedule.parse(t.slot.start) < Schedule.parse(gap.end)
       );
+      const gapCandidates = allUnplaced.filter(t => !t.slot);
+      const gapCandsHTML = nowCandidatesHTML(gapCandidates, day, gap.start, remain);
       nowCard = `<section class="now now--gap">
         <div class="now__eyebrow"><span class="now__dot"></span>此刻 · ${Schedule.hhmm(mins)} · 空档</div>
         <h2 class="now__title">这段时间空着</h2>
         <div class="now__range">${gap.start} — ${gap.end} · 还有 ${Schedule.fmtDur(remain)}</div>
         ${gapTasks.length ? `<div class="now__list">${gapTasks.map(nowTaskHTML).join('')}</div>` : ''}
-        <div class="now__actions">
+        ${gapCandsHTML}
+        ${!gapCandidates.length ? `<div class="now__actions">
           <button type="button" class="btn btn--primary" data-add-start="${gap.start}">从待办里挑一件</button>
-        </div>
+        </div>` : ''}
         ${nxt ? `<div class="now__next">→ 下一块 <b>${nxt.start} ${esc(nxt.label)}</b></div>` : ''}
       </section>`;
     }

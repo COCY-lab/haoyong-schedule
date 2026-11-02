@@ -313,6 +313,53 @@ input, textarea { font-family: inherit; color: inherit; }
   border-left: 3px solid var(--primary);
 }
 
+/* ====== 任务卡片 · 排期建议条（视觉优先于标签） ====== */
+.card-suggestion {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(79,70,229,.10), rgba(79,70,229,.03));
+  border: 1px solid rgba(79,70,229,.35);
+}
+.card-suggestion__head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 14px; font-weight: 600; color: var(--primary);
+}
+.card-suggestion__dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--primary); display: inline-block;
+}
+.card-suggestion__time {
+  font-weight: 700;
+}
+.card-suggestion__src {
+  font-size: 12px; font-weight: 400; color: var(--text-muted);
+}
+.card-suggestion__reason {
+  font-size: 12px; color: var(--text-muted);
+  margin-top: 4px; line-height: 1.45;
+}
+.card-suggestion__acts {
+  display: flex; gap: 6px; margin-top: 8px;
+}
+.card-suggestion__accept {
+  flex: none;
+  border: none; border-radius: 6px;
+  background: var(--primary); color: #fff;
+  font-size: 13px; font-weight: 600;
+  padding: 7px 12px; cursor: pointer;
+  min-height: 30px;
+}
+.card-suggestion__accept:active { background: var(--primary-active); }
+.card-suggestion__ignore {
+  border: 1px solid var(--border-strong);
+  background: transparent; color: var(--text-muted);
+  border-radius: 6px; padding: 7px 12px;
+  font-size: 13px; cursor: pointer;
+  min-height: 30px;
+}
+.card-suggestion__ignore:active { background: var(--surface-2); }
+
 /* 任务卡片底部操作 */
 .task-actions {
   display: flex; justify-content: flex-end; gap: 4px;
@@ -570,6 +617,61 @@ html[data-theme="dark"] .toast { background: rgba(230,232,238,.92); color: #181b
 .now__actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
 .now__next { display: flex; align-items: center; gap: 6px; margin-top: 14px; font-size: 13px; color: var(--text-muted); }
 .now--gap { border: 1px dashed var(--border-strong); background: var(--surface-2); }
+
+/* ====== 现在页 · 空档候选 ====== */
+.now-gap-candidates {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-strong);
+}
+.now-gap-candidates__title {
+  font-size: 12px; font-weight: 600;
+  color: var(--text-faint);
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.now-gap-candidates__list {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.candidate-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.candidate-row__body { flex: 1; min-width: 0; }
+.candidate-row__text {
+  font-size: 14px;
+  word-break: break-word;
+  line-height: 1.4;
+}
+.candidate-row__meta {
+  font-size: 12px; color: var(--text-faint);
+  margin-top: 2px;
+}
+.candidate-row__btn {
+  flex: none;
+  border: none; border-radius: 6px;
+  background: var(--primary); color: #fff;
+  font-size: 12px; font-weight: 600;
+  padding: 6px 10px; cursor: pointer;
+  min-height: 28px;
+  white-space: nowrap;
+}
+.candidate-row__btn:active { background: var(--primary-active); }
+
+/* 明天入口提示 */
+.now-tomorrow-entry {
+  margin-top: 8px;
+  padding: 8px 10px;
+  font-size: 12px; color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 1px dashed var(--border-strong);
+  line-height: 1.45;
+}
 
 /* 按钮 */
 .btn { border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); border-radius: 8px; padding: 8px 14px; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
