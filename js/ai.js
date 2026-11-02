@@ -107,7 +107,7 @@
         if (todaySlots.length) {
           slotsHint += `\n【今天剩余可行空档】（只能从中选一个开始时间）：\n${formatList(todaySlots)}`;
         } else {
-          slotsHint += `\n【今天已无可行行空档】（全部被占或已过去）`;
+          slotsHint += `\n【今天已无可行空档】（全部被占或已过去）`;
         }
         if (tomorrowSlots.length) {
           slotsHint += `\n【明天可行空档】（今天放不下时再考虑）：\n${formatList(tomorrowSlots)}`;
@@ -243,6 +243,7 @@
       minutes,
       reason: String(reason).slice(0, 25),
       source: 'rule',
+      generatedAt: Date.now(),
     };
   }
 
@@ -299,7 +300,7 @@
     // 5) reason ≤ 25 字
     const reason = String(raw.reason || '').slice(0, 25);
 
-    return { day: raw.day, start: raw.start, minutes, reason, source: 'ai' };
+    return { day: raw.day, start: raw.start, minutes, reason, source: 'ai', generatedAt: Date.now() };
   }
 
   // ---------- 结果规范化 ----------
@@ -338,5 +339,5 @@
   }
 
   // ---------- 导出 ----------
-  global.AI = { judge, testConnection };
+  global.AI = { judge, testConnection, suggestScheduleByRule, normalizeScheduleSuggestion };
 })(window);

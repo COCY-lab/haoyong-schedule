@@ -255,11 +255,15 @@
       const labelMap = { mon:'周一', tue:'周二', wed:'周三', thu:'周四', fri:'周五', sat:'周六', sun:'周日' };
       const prefixDay = (sugg.day === Schedule.todayKey()) ? '今天' : labelMap[sugg.day] || sugg.day;
       const sourceTag = sugg.source === 'ai' ? 'AI 建议' : '本地规则';
+      // 建议生成超过 30 分钟：渲染时提示可能已过期（接受时仍会二次校验）
+      const staleMs = sugg.generatedAt ? (Date.now() - sugg.generatedAt) : Infinity;
+      const staleTag = staleMs > 30 * 60 * 1000
+        ? `<span class="card-suggestion__stale">· 建议可能已过期</span>` : '';
       suggHTML = `<div class="card-suggestion" data-id="${t.id}">
         <div class="card-suggestion__head">
           <span class="card-suggestion__dot"></span>
           <span class="card-suggestion__time">排到 ${prefixDay} ${sugg.start}</span>
-          <span class="card-suggestion__src">· ${sourceTag}</span>
+          <span class="card-suggestion__src">· ${sourceTag}</span>${staleTag}
         </div>
         ${sugg.reason ? `<div class="card-suggestion__reason">${esc(sugg.reason)}</div>` : ''}
         <div class="card-suggestion__acts">
@@ -432,6 +436,50 @@
       const task = Storage.getTasks().find(t => t.id === card.dataset.id);
       const sugg = task && task.ai && task.ai.scheduleSuggestion;
       if (!sugg) return;
+
+      // ---- 二次校验：接受前该 slot 必须仍可用 ----
+      const WEEK = ['mon','tue','wed','thu','fri','sat','sun'];
+      const nowM = Schedule.nowMinutes();
+      const buf = Schedule.BUFFER || 15;
+      let failReason = null;
+      // ① day/start 格式合法 + 若是今天则 start 必须晚于 now+buffer（严格未来时间）
+      if (!sugg.day || WEEK.indexOf(sugg.day) < 0) failReason = '建议里的日期无效';
+      else if (!sugg.start || !/^([01]?\d|2[0-3]):([0-5]\d)$/.test(sugg.start)) failReason = '建议里的时间无效';
+      else if (sugg.day === Schedule.todayKey() && Schedule.parse(sugg.start) < nowM + buf) failReason = '该时段已过去或太贴近现在';
+      // ② 该时段未被其他任务占用（排除自己）
+      else {
+        const occupied = Storage.getTasks().some(x =>
+          x.id !== task.id && !x.done && x.slot && x.slot.day === sugg.day && x.slot.start === sugg.start
+        );
+        if (occupied) failReason = '该时段已被其他任务占用';
+      }
+      // ③ 该时段仍在当前可用空档内
+      if (!failReason) {
+        const est = Math.max(sugg.minutes || 30, 30);
+        const avail = Schedule.getUpcomingSlots({ fromNow: true, estMinutes: est, maxDays: 2, maxPerDay: 30, snapMinutes: 30 });
+        const hit = avail.find(s => s.day === sugg.day && s.start === sugg.start && s.endMinutes >= est);
+        if (!hit) failReason = '该时段已不在可用空档内';
+      }
+
+      if (failReason) {
+        // 校验失败：不写入，重新计算一条可用建议
+        const fresh = (window.AI && AI.suggestScheduleByRule)
+          ? AI.suggestScheduleByRule(task.text, (task.ai && task.ai.estMinutes) || null, (task.ai && task.ai.priority) || 'mid')
+          : null;
+        if (fresh) {
+          Storage.updateTask(task.id, { ai: Object.assign({}, task.ai, { scheduleSuggestion: fresh, scheduleAccepted: false, scheduleIgnored: false }) });
+          renderAll();
+          toastIn(failReason + '，已为你重新计算 → ' + Schedule.WEEK_LABEL[fresh.day] + ' ' + fresh.start);
+        } else {
+          // 实在没有可用空档（连明天都没了）
+          Storage.updateTask(task.id, { ai: Object.assign({}, task.ai, { scheduleSuggestion: null, scheduleAccepted: false }) });
+          renderAll();
+          toastIn(failReason + '，今明两天都没有可用空档了');
+        }
+        return;
+      }
+
+      // 校验通过：写入
       Schedule.placeTask(task.id, sugg.day, sugg.start);
       Storage.updateTask(task.id, { ai: Object.assign({}, task.ai, { scheduleAccepted: true, scheduleIgnored: false }) });
       renderAll();

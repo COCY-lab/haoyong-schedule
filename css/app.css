@@ -335,6 +335,9 @@ input, textarea { font-family: inherit; color: inherit; }
 .card-suggestion__src {
   font-size: 12px; font-weight: 400; color: var(--text-muted);
 }
+.card-suggestion__stale {
+  font-size: 12px; font-weight: 400; color: var(--danger, #e5484d);
+}
 .card-suggestion__reason {
   font-size: 12px; color: var(--text-muted);
   margin-top: 4px; line-height: 1.45;
