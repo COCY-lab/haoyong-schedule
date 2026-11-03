@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#4f46e5" />
+  <meta name="theme-color" content="#1B5E4F" />
   <meta name="description" content="好用的日程表 — 极简快速记一条，本地保存，AI 帮你打标签，周表排期" />
 
   <!-- iOS web app -->
@@ -260,6 +260,16 @@
         <button class="icon-btn" data-close-edit aria-label="关闭">✕</button>
       </div>
       <textarea id="editText" rows="4"></textarea>
+      <label>预计用时
+        <select id="editEst">
+          <option value="15">15 分钟</option>
+          <option value="30">30 分钟</option>
+          <option value="45">45 分钟</option>
+          <option value="60">60 分钟</option>
+          <option value="90">90 分钟</option>
+          <option value="120">120 分钟</option>
+        </select>
+      </label>
       <div class="row-btns">
         <button id="btnEditSave" class="btn-primary btn-small">保存</button>
         <button class="btn-ghost btn-small" data-close-edit>取消</button>

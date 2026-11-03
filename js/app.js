@@ -290,7 +290,7 @@
           ${ai.suggestion ? `<div class="suggestion">💡 ${esc(ai.suggestion)}</div>` : ''}
           ${ai.error ? `<div class="suggestion" style="border-left-color:var(--danger);color:var(--danger)">⚠ ${esc(ai.error)}</div>` : ''}
           <div class="task-actions">
-            <button class="act-slot">${t.slot ? '改排期' : '排进周表'}</button>
+            <button class="act-slot" data-open-task="${t.id}">${t.slot ? '改排期' : '排进周表'}</button>
             ${hasAI ? `<button class="act-fix">✎ 标签</button>` : ''}
             <button class="act-edit">📝 编辑</button>
             <button class="act-del">🗑 删除</button>
@@ -306,7 +306,6 @@
       if (confirm('确定删除这条任务？')) { Storage.removeTask(t.id); renderCapture(); toastIn('已删除'); }
     });
     el.querySelector('.act-edit').addEventListener('click', () => openEdit(t));
-    el.querySelector('.act-slot').addEventListener('click', () => openTaskDrawer(t.id));
     const actFix = el.querySelector('.act-fix');
     if (actFix) actFix.addEventListener('click', () => openFixTags(t));
 
@@ -430,6 +429,46 @@
     // 设置页里的"去周表管理"
     if (e.target.dataset.goto === 'week') { switchPage('week'); return; }
 
+    // === 任务卡上的入口（统一委托，避免重渲染后绑定失效） ===
+    const openTaskBtn = e.target.closest('[data-open-task]');
+    if (openTaskBtn) {
+      openTaskDrawer(openTaskBtn.dataset.openTask);
+      return;
+    }
+
+    // === 排期抽屉：选时段（给某个任务挑时间） ===
+    const pickSlot = e.target.closest('[data-pick-slot]');
+    if (pickSlot && pickCtx && pickCtx.mode === 'slot') {
+      const { taskId, onDone } = pickCtx;
+      const day = pickSlot.dataset.pickDay;
+      const start = pickSlot.dataset.pickStart;
+      if (!canPlaceAt(day, start, taskId)) {
+        toastIn('这个时段已不可用，换一个吧');
+        return;
+      }
+      Schedule.placeTask(taskId, day, start);
+      closePickDrawer();
+      toastIn('已排到 ' + Schedule.WEEK_LABEL[day] + ' ' + start);
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+
+    // === 排期抽屉：挑一件任务放进已选时段 ===
+    const pickTask = e.target.closest('[data-pick-task]');
+    if (pickTask && pickCtx && pickCtx.mode === 'task') {
+      const { day, start, onDone } = pickCtx;
+      const taskId = pickTask.dataset.pickTask;
+      if (!canPlaceAt(day, start, taskId)) {
+        toastIn('这个时段已过去或被占用，选别的时间吧');
+        return;
+      }
+      Schedule.placeTask(taskId, day, start);
+      closePickDrawer();
+      toastIn('已排进 ' + Schedule.WEEK_LABEL[day] + ' ' + start);
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+
     // === 任务详情抽屉里的按钮（事件委托统一处理，不用每次 open 重新绑） ===
     const tdAction = e.target.closest('[data-td-action]');
     if (tdAction) {
@@ -439,11 +478,10 @@
       const act = tdAction.dataset.tdAction;
       if (act === 'slot') {
         closeTaskDrawer();
-        openPickDrawer({ day: Schedule.todayKey(), start: '09:00', onDone: renderAll });
+        openSlotPicker(tid, renderAll);
       } else if (act === 'reslot') {
-        const task = Storage.getTasks().find(x => x.id === tid);
         closeTaskDrawer();
-        openPickDrawer({ day: task && task.slot ? task.slot.day : Schedule.todayKey(), start: task && task.slot ? task.slot.start : '09:00', onDone: renderAll });
+        openSlotPicker(tid, renderAll);
       } else if (act === 'unslot') {
         Schedule.unplaceTask(tid);
         closeTaskDrawer();
@@ -491,7 +529,7 @@
       }
       // ③ 该时段仍在当前可用空档内
       if (!failReason) {
-        const est = Math.max(sugg.minutes || 30, 30);
+        const est = estMinutesOf(task);
         const avail = Schedule.getUpcomingSlots({ fromNow: true, estMinutes: est, maxDays: 2, maxPerDay: 30, snapMinutes: 30 });
         const hit = avail.find(s => s.day === sugg.day && s.start === sugg.start && s.endMinutes >= est);
         if (!hit) failReason = '该时段已不在可用空档内';
@@ -934,35 +972,95 @@
   }
 
   function openPickDrawer(ctx) {
-    pickCtx = ctx;
-    $('#pickTitle').textContent = `放进 ${Schedule.WEEK_LABEL[ctx.day]} ${ctx.start}`;
+    pickCtx = Object.assign({ mode: 'task' }, ctx);
+    const { day, start } = pickCtx;
+    $('#pickTitle').textContent = `放进 ${Schedule.WEEK_LABEL[day]} ${start}`;
+    $('#pickSub').textContent = '从未排期的任务里挑一件，点一下才写入';
     const pool = Schedule.unplacedTasks();
     const list = $('#pickList');
+    const empty = $('#pickEmpty');
     if (!pool.length) {
       list.innerHTML = '';
-      $('#pickEmpty').classList.remove('hidden');
+      empty.textContent = '没有未排期的任务，先去「随手记」记一条吧。';
+      empty.classList.remove('hidden');
     } else {
-      $('#pickEmpty').classList.add('hidden');
+      empty.classList.add('hidden');
       list.innerHTML = pool.map(t => {
-        const est = (t.ai && t.ai.estMinutes) ? Schedule.fmtDur(t.ai.estMinutes) : '';
-        return `<div class="pick-item" data-id="${t.id}">
+        const est = estLabelOf(t);
+        return `<div class="pick-item" data-pick-task="${t.id}">
           <span class="pick-item__text">${esc(t.text)}</span>
           ${est ? `<span class="pick-item__est">${est}</span>` : ''}
         </div>`;
       }).join('');
-      list.onclick = (e) => {
-        const item = e.target.closest('.pick-item');
-        if (!item) return;
-        Schedule.placeTask(item.dataset.id, ctx.day, ctx.start);
-        closePickDrawer();
-        toastIn('已排进 ' + Schedule.WEEK_LABEL[ctx.day] + ' ' + ctx.start);
-        if (typeof ctx.onDone === 'function') ctx.onDone();
-      };
     }
     $('#pickDrawer').classList.remove('hidden');
+    $('#pickDrawer').setAttribute('aria-hidden', 'false');
   }
+
+  // 给指定任务选时间：列出今天剩余 / 明天的可行空档，点哪段才排哪段，不点就不排。
+  function openSlotPicker(taskId, onDone) {
+    const t = Storage.getTasks().find(x => x.id === taskId);
+    if (!t) return;
+    const est = estMinutesOf(t);
+    const slots = Schedule.getUpcomingSlots({
+      fromNow: true, estMinutes: est, maxDays: 2, maxPerDay: 12, snapMinutes: 30,
+    });
+    const today = Schedule.todayKey();
+    const todaySlots = slots.filter(s => s.day === today);
+    const tomorrowSlots = slots.filter(s => s.day !== today);
+
+    pickCtx = { mode: 'slot', taskId, onDone };
+
+    $('#pickTitle').textContent = `给「${t.text.slice(0, 12)}」选时间`;
+    $('#pickSub').textContent = `预计 ${est} 分钟 · 只列出能完整放下的空档，点一段才排进去`;
+
+    const list = $('#pickList');
+    const empty = $('#pickEmpty');
+    const row = s => `<div class="pick-item" data-pick-slot data-pick-day="${s.day}" data-pick-start="${s.start}">
+        <span class="pick-item__text">${Schedule.WEEK_LABEL[s.day]} ${s.start}</span>
+        <span class="pick-item__est">可放 ${s.endMinutes} 分钟${s.label ? ' · ' + esc(s.label) : ''}</span>
+      </div>`;
+
+    if (!slots.length) {
+      list.innerHTML = '';
+      empty.textContent = `今明两天都没有能完整放下 ${est} 分钟的空档。可以先去周表腾出时间，或把预计用时改小一点。`;
+      empty.classList.remove('hidden');
+    } else {
+      empty.classList.add('hidden');
+      let html = '';
+      html += `<div class="muted" style="margin:2px 0 6px">今天剩余可行空档</div>`;
+      html += todaySlots.length
+        ? todaySlots.map(row).join('')
+        : `<div class="muted" style="margin-bottom:8px">今天已没有能完整放下 ${est} 分钟的空档，下面是明天的。</div>`;
+      if (tomorrowSlots.length) {
+        html += `<div class="muted" style="margin:10px 0 6px">明天可行空档</div>`;
+        html += tomorrowSlots.map(row).join('');
+      }
+      list.innerHTML = html;
+    }
+    $('#pickDrawer').classList.remove('hidden');
+    $('#pickDrawer').setAttribute('aria-hidden', 'false');
+  }
+
+  function estMinutesOf(t) {
+    const raw = t && t.ai && t.ai.estMinutes;
+    return Math.max(Number(raw) || 30, 30);
+  }
+  function estLabelOf(t) {
+    const raw = t && t.ai && t.ai.estMinutes;
+    return raw ? Schedule.fmtDur(raw) : '';
+  }
+  // 写入前的硬校验：今天必须晚于 now+BUFFER，且时段未被别的任务占用。
+  function canPlaceAt(day, start, selfId) {
+    if (!day || !start) return false;
+    if (day === Schedule.todayKey() && Schedule.parse(start) < Schedule.nowMinutes() + (Schedule.BUFFER || 15)) return false;
+    return !Storage.getTasks().some(x =>
+      x.id !== selfId && !x.done && x.slot && x.slot.day === day && x.slot.start === start);
+  }
+
   function closePickDrawer() {
     $('#pickDrawer').classList.add('hidden');
+    $('#pickDrawer').setAttribute('aria-hidden', 'true');
     pickCtx = null;
   }
 
@@ -1010,15 +1108,24 @@
     $('#btnEditSave').addEventListener('click', () => {
       const text = $('#editText').value.trim();
       if (!editingId || !text) return closeEdit();
-      Storage.updateTask(editingId, { text });
+      const cur = Storage.getTasks().find(x => x.id === editingId) || {};
+      const ai = Object.assign({}, cur.ai || {}, { estMinutes: Number($('#editEst').value) || 30 });
+      Storage.updateTask(editingId, { text, ai });
       closeEdit();
       renderAll();
       toastIn('已更新');
     });
   }
+  const EST_OPTIONS = [15, 30, 45, 60, 90, 120];
+  function nearestEst(v) {
+    const n = Number(v);
+    if (!n) return 30;
+    return EST_OPTIONS.reduce((best, x) => Math.abs(x - n) < Math.abs(best - n) ? x : best, 30);
+  }
   function openEdit(t) {
     editingId = t.id;
     $('#editText').value = t.text;
+    $('#editEst').value = String(nearestEst(t.ai && t.ai.estMinutes));
     $('#editModal').classList.remove('hidden');
     $('#editModal').setAttribute('aria-hidden', 'false');
     setTimeout(() => { $('#editText').focus(); $('#editText').select(); }, 50);

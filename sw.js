@@ -6,7 +6,7 @@
  *   3. 网络请求（AI API）不拦截，让浏览器自己处理，离线自然失败由 ai.js 兜底
  * ============================================================ */
 
-const CACHE_NAME = 'ryb-v13-20261103';
+const CACHE_NAME = 'ryb-v14-20261103';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -17,8 +17,11 @@ const PRECACHE_URLS = [
   './js/app.js',
   './manifest.webmanifest',
   './favicon.svg',
+  './icon-144.png',
   './icon-192.png',
   './icon-512.png',
+  './icon-maskable-192.png',
+  './icon-maskable-512.png',
 ];
 
 self.addEventListener('install', (event) => {
